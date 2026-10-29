@@ -1,0 +1,39 @@
+:name: APB3 UART co-simulation
+:description: Renode drives a Verilated SpinalHDL APB3 UART over its system bus.
+
+# Override before including to try another model: $model = @/path/to/libVtop.so
+$model ?= @$ORIGIN/../output/apb3uart/libVtop.so
+
+mach create "apb3uart-cosim"
+machine LoadPlatformDescriptionFromString 'uart: CoSimulated.CoSimulatedUART @ sysbus <0x40000000, +0x100> { frequency: 50000000 }'
+uart SimulationFilePathLinux $model
+machine Reset
+
+# STATUS (0x04): TX FIFO free [21:16], pending IRQs [9:8], IRQ enables [1:0].
+echo "STATUS reset"
+sysbus ReadDoubleWord 0x40000004
+sysbus WriteDoubleWord 0x40000004 3
+echo "STATUS tx+rx irq enabled"
+sysbus ReadDoubleWord 0x40000004
+sysbus WriteDoubleWord 0x40000004 2
+echo "STATUS rx irq enabled"
+sysbus ReadDoubleWord 0x40000004
+sysbus WriteDoubleWord 0x40000004 0
+echo "STATUS irqs disabled"
+sysbus ReadDoubleWord 0x40000004
+
+# CLOCK_DIVIDER (0x08) and FRAME (0x0C, 8 data bits) match sim_main.cpp's agent.
+sysbus WriteDoubleWord 0x40000008 0
+sysbus WriteDoubleWord 0x4000000C 7
+
+# DATA (0x00): RX valid [16], RX byte [7:0]. Each byte crosses the RTL's rxd pin.
+echo "DATA rx empty"
+sysbus ReadDoubleWord 0x40000000
+uart WriteChar 0x41
+echo "DATA rx 'A'"
+sysbus ReadDoubleWord 0x40000000
+uart WriteChar 0x5A
+echo "DATA rx 'Z'"
+sysbus ReadDoubleWord 0x40000000
+
+echo "UART_COSIM_DONE"

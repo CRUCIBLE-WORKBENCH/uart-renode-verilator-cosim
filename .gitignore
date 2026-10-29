@@ -1,0 +1,4 @@
+# Upstream checkout, Verilator build and smoke logs: all regenerable.
+output/
+__pycache__/
+*.pyc

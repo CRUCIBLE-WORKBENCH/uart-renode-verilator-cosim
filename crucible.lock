@@ -1,0 +1,30 @@
+{
+  "active_environment": "default",
+  "environments": [
+    {
+      "name": "default",
+      "stack": "default",
+      "tools": [
+        {
+          "artifact_id": "igny_ubuntu_renode_1.16.1.0.tar.gz",
+          "checksum": "sha256:56914234cfe0d51f880296a3f6b56f5fe4004b9fcb31cb45cdd7edda051f6544",
+          "enabled": true,
+          "name": "renode",
+          "platform": "linux-x86_64",
+          "source": "artifact",
+          "version": "1.16.1"
+        },
+        {
+          "artifact_id": "igny_linux-x64_verilator_5.047.0.0.tar.gz",
+          "checksum": "sha256:d06e131794520bdab625568c9a2e74318e2761652a76a285544a9dac7041f5bc",
+          "enabled": true,
+          "name": "verilator",
+          "platform": "linux-x86_64",
+          "source": "artifact",
+          "version": "5.047.0"
+        }
+      ]
+    }
+  ],
+  "schema_version": 1
+}

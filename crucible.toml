@@ -1,0 +1,4 @@
+[workspace]
+name = "uart-renode-verilator-cosim"
+environment = "default"
+environments = ["default"]
