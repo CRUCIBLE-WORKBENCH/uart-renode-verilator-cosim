@@ -11,7 +11,8 @@ This repository contains work adapted from:
   Both adapted files keep Antmicro's original copyright and licence header,
   followed by a note of what was changed.
     - hdl/sim_main.cpp is adapted from cpp/sim_main_dpi.cpp. It adds the
-      rewriting of Renode's positional launch arguments into +RENODE_* plusargs.
+      rewriting of Renode's positional launch arguments into +RENODE_* plusargs,
+      and optional VCD recording selected by COSIM_TRACE_FILE.
     - hdl/sim.sv follows the structure of samples/apb3_completer_mem.
 
 Not included, fetched at build time:

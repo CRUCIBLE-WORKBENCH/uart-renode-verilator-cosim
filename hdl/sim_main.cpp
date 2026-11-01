@@ -17,16 +17,20 @@
 // Verilator main loop for the DPI co-simulation, after cpp/sim_main_dpi.cpp in
 // antmicro/renode-dpi-examples.
 //
-// The one addition: Renode's SimulationFilePathLinux starts this executable
+// Renode's SimulationFilePathLinux starts this executable
 // with three positional arguments, "<receiver port> <sender port> <address>",
 // while the IntegrationLibrary reads +RENODE_RECEIVER_PORT, +RENODE_SENDER_PORT
 // and +RENODE_ADDRESS. Those are rewritten here so Renode can launch and stop
 // the model itself. Plusargs given directly are passed through unchanged.
+// Set COSIM_TRACE_FILE to record the same DPI run as a VCD waveform.
 
 #include <string>
 #include <vector>
+#include <cstdio>
+#include <cstdlib>
 
 #include <verilated.h>
+#include <verilated_vcd_c.h>
 #include "Vsim.h"
 
 int main(int argc, char **argv)
@@ -41,15 +45,36 @@ int main(int argc, char **argv)
 
     VerilatedContext *contextp = new VerilatedContext;
     contextp->commandArgs(static_cast<int>(cargs.size()), cargs.data());
+    const char *trace_path = std::getenv("COSIM_TRACE_FILE");
+    const bool tracing = trace_path && *trace_path;
+    if (tracing) contextp->traceEverOn(true);
     Vsim *top = new Vsim{contextp};
+    VerilatedVcdC *trace = nullptr;
+    if (tracing) {
+        trace = new VerilatedVcdC;
+        top->trace(trace, 99);
+        trace->open(trace_path);
+        if (!trace->isOpen()) {
+            std::fprintf(stderr, "[ERROR] cannot open VCD trace: %s\n", trace_path);
+            delete trace;
+            delete top;
+            delete contextp;
+            return EXIT_FAILURE;
+        }
+    }
 
     while (!contextp->gotFinish()) {
         top->eval();
+        if (tracing) trace->dump(contextp->time());
         if (!top->eventsPending()) break;
         contextp->time(top->nextTimeSlot());
     }
 
     top->final();
+    if (tracing) {
+        trace->close();
+        delete trace;
+    }
     delete top;
     delete contextp;
     return 0;

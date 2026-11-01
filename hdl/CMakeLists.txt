@@ -38,6 +38,7 @@ target_include_directories(verilated PRIVATE ${COLIB})
 target_link_options(verilated PRIVATE -static-libstdc++ -static-libgcc)
 
 verilate(verilated
+  TRACE
   TOP_MODULE sim
   PREFIX Vsim
   SOURCES ${COLIB}/hdl/renode_pkg.sv ${COLIB_IMPORTS} ${COLIB_MODULES}

@@ -24,11 +24,48 @@ real SystemVerilog.
 
 ## Quick start
 
+### Makefile workflow (Linux/WSL)
+
+After entering Crucible, the Makefile runs the existing DPI build and smoke
+scripts in the lock's `default` environment. It prepares Linux line endings
+before build/run/smoke.
+
+```sh
+igny init
+igny workspace sync
+igny tool install make --env default
+igny run make build
+igny run make run
+igny run make smoke
+```
+
+`igny run make run` runs the same 14 readbacks and two rejection controls while recording
+`output/waves/cosim.vcd`. The waveform checker requires the received `A` and `Z`
+values on the RTL read-data bus and low/high clock, serial and IRQ activity.
+`igny run make sed` performs the line-ending preparation on its own.
+
+To view the recorded waveform, bind the optional viewer and open it:
+
+```sh
+igny tool install gtkwave --env default
+igny run make waves
+```
+
+`igny run make waves` opens an existing VCD; it does not run a separate behavioural bench.
+It needs a graphical Linux/WSLg session. `igny run make clean` removes only generated
+`output/`, including fetched upstream sources, models, logs and waveforms. It
+preserves project sources and installed Crucible tools; the next build fetches
+and compiles again. `igny run make help` lists the targets.
+
+The direct script workflow remains available below. `IGNY_ENV` can select an
+existing environment with the same locked tool versions, for example
+`igny run make smoke IGNY_ENV=default`.
+
 **You need:**
 
 - Linux x86_64. Nothing else has been measured.
-- Crucible (`igny`), measured on 0.0.7b95.
-- These host tools, which Crucible does not ship: `cmake` 3.19 or newer, `make`,
+- Crucible beta (`igny`), with this Makefile workflow measured on 1.0.0.
+- These build prerequisites on PATH: `cmake` 3.19 or newer, `make`,
   a C++ compiler (`c++`), `perl`, `python3`, `git` and `timeout`. `build.sh`
   checks for them and names any that are missing.
 - Network access for the first build. It fetches one upstream commit from
@@ -49,7 +86,7 @@ A passing run ends with:
 
 ```text
 ok    rtl-model: pass
-        PASS …/output/smoke/uart.log: 14 reads match the RTL
+        PASS â€¦/output/smoke/uart.log: 14 reads match the RTL
 ok    missing-model: reject
 ok    wrong-expected-byte: reject
 co-simulation smoke passed
@@ -86,7 +123,7 @@ flowchart LR
     subgraph R["Renode process"]
         CPU["Monitor / script<br/>sysbus Read/WriteDoubleWord"]
         BUS["System bus"]
-        COSIM["CoSimulatedPeripheral 'uart'<br/>0x40000000 – 0x400000FF"]
+        COSIM["CoSimulatedPeripheral 'uart'<br/>0x40000000 â€“ 0x400000FF"]
         LED["LED 'irq'<br/>(GPIO input 0)"]
         CPU --> BUS --> COSIM
         COSIM -- "signal 0" --> LED
@@ -159,10 +196,11 @@ sequenceDiagram
     X->>X: $finish, exit
 ```
 
-The positional-to-plusarg rewrite is the one addition to Antmicro's
-`sim_main_dpi.cpp`. It lets Renode launch and stop the model itself, so no
-Robot or Python driver is needed. Plusargs given directly pass through
-unchanged, so you can also start the model by hand and connect Renode to it.
+The positional-to-plusarg rewrite lets Renode launch and stop the model itself,
+so no Robot driver is needed. Plusargs given directly pass through unchanged.
+The main loop also records VCD when `COSIM_TRACE_FILE` is set; `igny run make run` sets
+that variable to the project waveform path. Ordinary smoke runs do not record
+a waveform.
 
 ### Time only moves when Renode moves it
 
@@ -176,8 +214,8 @@ after each write. In testing, steps of 0.1 ms or less did not reach the model;
 
 | Piece | Exactly what | Pinned by |
 | --- | --- | --- |
-| Renode | 1.17.0 | `crucible.lock` (artifact sha256 `2ef52c64…`) |
-| Verilator | 5.052 | `crucible.lock` (artifact sha256 `0bdb24ee…`) |
+| Renode | 1.17.0 | `crucible.lock` (artifact sha256 `2ef52c64â€¦`) |
+| Verilator | 5.052 | `crucible.lock` (artifact sha256 `0bdb24eeâ€¦`) |
 | UART RTL | `samples/apb3uart/Apb3UartCtrl.v` from [antmicro/renode-verilator-integration](https://github.com/antmicro/renode-verilator-integration), MIT | `upstream.env` (commit `c9692ca3`) |
 | Co-simulation glue | Renode's own DPI IntegrationLibrary (`plugins/IntegrationLibrary`), plus `hdl/` here | the locked Renode |
 
@@ -204,40 +242,40 @@ Two details in [`hdl/CMakeLists.txt`](hdl/CMakeLists.txt) are deliberate:
 
 - **The IntegrationLibrary modules are listed as sources.** Upstream's recipe
   finds them through Verilator's `-y` search instead, and Verilator 5.047 and
-  5.052 then drop the file-scope `import renode_pkg::…` lines of the
+  5.052 then drop the file-scope `import renode_pkg::â€¦` lines of the
   auto-loaded files.
 - **The C++ runtime is linked statically, as upstream does.** Renode starts the
   model with Renode's own library path, which puts Renode's bundled
   `libstdc++` first. A model linked dynamically against a newer host
-  `libstdc++` then fails to start (`GLIBCXX_… not found`).
+  `libstdc++` then fails to start (`GLIBCXX_â€¦ not found`).
 
 ## Repository layout
 
 ```text
 .
-├── crucible.toml              Crucible workspace: one environment, "default"
-├── crucible.lock              exact Renode and Verilator artifacts (sha256)
-├── upstream.env               pinned upstream URL, commit and sample path
-├── hdl/
-│   ├── sim.sv                 simulation top: Renode DPI modules + UART + loopback
-│   ├── sim_main.cpp           Verilator main loop and launch-argument rewrite
-│   └── CMakeLists.txt         verilates everything into one executable
-├── scripts/
-│   ├── build.sh               checks, fetch, configure, build (run via igny)
-│   ├── fetch_upstream.sh      fetch and verify the pinned upstream commit
-│   ├── smoke.sh               run the co-simulation and its two controls
-│   ├── check_uart_log.py      judge a Renode log against the expected values
-│   ├── uart_cosim.repl        Renode platform: the UART on the bus + irq LED
-│   ├── uart_cosim.resc        Renode script: load, reset, 14 labelled reads
-│   └── _common.sh             shared paths and checks (sourced, not run)
-├── tests/
-│   └── test_check_uart_log.py unit tests for the checker
-├── output/                    everything generated (gitignored)
-│   ├── upstream/              the fetched upstream checkout
-│   ├── apb3uart/verilated     the co-simulation model
-│   └── smoke/                 Renode logs and checker verdicts
-├── LICENSE                    Apache License 2.0
-└── NOTICE                     attribution for adapted and fetched sources
+â”œâ”€â”€ crucible.toml              Crucible workspace: one environment, "default"
+â”œâ”€â”€ crucible.lock              exact Renode and Verilator artifacts (sha256)
+â”œâ”€â”€ upstream.env               pinned upstream URL, commit and sample path
+â”œâ”€â”€ hdl/
+â”‚   â”œâ”€â”€ sim.sv                 simulation top: Renode DPI modules + UART + loopback
+â”‚   â”œâ”€â”€ sim_main.cpp           Verilator main loop and launch-argument rewrite
+â”‚   â””â”€â”€ CMakeLists.txt         verilates everything into one executable
+â”œâ”€â”€ scripts/
+â”‚   â”œâ”€â”€ build.sh               checks, fetch, configure, build (run via igny)
+â”‚   â”œâ”€â”€ fetch_upstream.sh      fetch and verify the pinned upstream commit
+â”‚   â”œâ”€â”€ smoke.sh               run the co-simulation and its two controls
+â”‚   â”œâ”€â”€ check_uart_log.py      judge a Renode log against the expected values
+â”‚   â”œâ”€â”€ uart_cosim.repl        Renode platform: the UART on the bus + irq LED
+â”‚   â”œâ”€â”€ uart_cosim.resc        Renode script: load, reset, 14 labelled reads
+â”‚   â””â”€â”€ _common.sh             shared paths and checks (sourced, not run)
+â”œâ”€â”€ tests/
+â”‚   â””â”€â”€ test_check_uart_log.py unit tests for the checker
+â”œâ”€â”€ output/                    everything generated (gitignored)
+â”‚   â”œâ”€â”€ upstream/              the fetched upstream checkout
+â”‚   â”œâ”€â”€ apb3uart/verilated     the co-simulation model
+â”‚   â””â”€â”€ smoke/                 Renode logs and checker verdicts
+â”œâ”€â”€ LICENSE                    Apache License 2.0
+â””â”€â”€ NOTICE                     attribution for adapted and fetched sources
 ```
 
 ## Driving the UART yourself
@@ -274,7 +312,7 @@ the script uses them:
 | `0x0C` | FRAME | frame format (the script uses 7: 8 data bits, no parity, one stop bit) | |
 
 Quitting straight after a register access makes the model print
-`%Error: … Unexpected channel disconnection` as it shuts down. A `RunFor`
+`%Error: â€¦ Unexpected channel disconnection` as it shuts down. A `RunFor`
 before `quit` avoids it.
 
 ## What the smoke proves
@@ -316,8 +354,8 @@ result:
 
 ```mermaid
 flowchart TD
-    S["igny run ./scripts/smoke.sh"] --> R1["Renode + the real model<br/>→ output/smoke/uart.log"]
-    S --> R2["Renode + a model path that does not exist<br/>→ output/smoke/missing-model.log"]
+    S["igny run ./scripts/smoke.sh"] --> R1["Renode + the real model<br/>â†’ output/smoke/uart.log"]
+    S --> R2["Renode + a model path that does not exist<br/>â†’ output/smoke/missing-model.log"]
     R1 --> C1{"checker on uart.log"}
     C1 -- "must PASS" --> OK1["ok rtl-model"]
     R2 --> C2{"checker on missing-model.log"}
@@ -354,12 +392,12 @@ example. To co-simulate another APB3 peripheral:
    Change all three, or configuration fails on the missing UART file. For RTL
    kept in this repository, for example `hdl/my_periph.sv`:
    - In [`hdl/CMakeLists.txt`](hdl/CMakeLists.txt), remove `${UART_RTL}` from
-     the `foreach(required …)` preflight list.
-   - In the same file, replace `${UART_RTL}` in `verilate(… SOURCES …)` with
+     the `foreach(required â€¦)` preflight list.
+   - In the same file, replace `${UART_RTL}` in `verilate(â€¦ SOURCES â€¦)` with
      your files, for example `${CMAKE_CURRENT_SOURCE_DIR}/my_periph.sv`.
    - In [`scripts/build.sh`](scripts/build.sh), delete the
      `"${DEMO_DIR}/scripts/fetch_upstream.sh"` line, and remove the
-     `-DUART_RTL=…` argument from the `cmake -S …` command, together with the
+     `-DUART_RTL=â€¦` argument from the `cmake -S â€¦` command, together with the
      `\` that continues the line before it.
 
    If your RTL comes from another repository, keep `fetch_upstream.sh`. Point
@@ -384,12 +422,12 @@ The IntegrationLibrary also has modules for AHB and AXI
 | --- | --- | --- |
 | `run this through Crucible so the locked tools are on PATH` | A script was run directly | `igny run ./scripts/build.sh` (or `smoke.sh`) |
 | `<tool> X is bound here but crucible.lock pins Y` | The environment has a different version bound | `igny workspace sync` |
-| `missing host prerequisite(s): …` | A host tool is not installed | Install it with your system package manager |
+| `missing host prerequisite(s): â€¦` | A host tool is not installed | Install it with your system package manager |
 | CMake: `CMake 3.19 or higher is required` | Host CMake is too old for Verilator's own CMake package | Install CMake 3.19 or newer |
 | `Error starting cosimulated peripheral` in the Renode log | The model was not built, or `$model` points at the wrong file | Run `build.sh`; check `output/apb3uart/verilated` exists |
 | A read returns the old value after a write | Renode's virtual time did not advance far enough | `emulation RunFor "0.001"` between the write and the read |
-| `%Error: … Unexpected channel disconnection` at quit | Quit straight after a bus access | Add a `RunFor` before `quit` |
-| `GLIBCXX_… not found` when Renode starts a model you built yourself | The model links `libstdc++` dynamically and Renode's bundled one comes first | Keep `-static-libstdc++ -static-libgcc`, as in `CMakeLists.txt` |
+| `%Error: â€¦ Unexpected channel disconnection` at quit | Quit straight after a bus access | Add a `RunFor` before `quit` |
+| `GLIBCXX_â€¦ not found` when Renode starts a model you built yourself | The model links `libstdc++` dynamically and Renode's bundled one comes first | Keep `-static-libstdc++ -static-libgcc`, as in `CMakeLists.txt` |
 | The smoke's `rtl-model` case fails but Renode exited 0 | Expected: Renode's exit status says nothing about the model | Read `output/smoke/rtl-model.check` and `uart.log` |
 
 ## Not covered
