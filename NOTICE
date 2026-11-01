@@ -1,0 +1,26 @@
+UART co-simulation: Renode + Verilator under Crucible
+Copyright 2026 Ignytion IO
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This repository contains work adapted from:
+
+  antmicro/renode-dpi-examples (https://github.com/antmicro/renode-dpi-examples),
+  commit 068a8066712f154552b08c07bd2cce346802949f
+  Copyright 2023 Antmicro, licensed under the Apache License, Version 2.0.
+  Both adapted files keep Antmicro's original copyright and licence header,
+  followed by a note of what was changed.
+    - hdl/sim_main.cpp is adapted from cpp/sim_main_dpi.cpp. It adds the
+      rewriting of Renode's positional launch arguments into +RENODE_* plusargs.
+    - hdl/sim.sv follows the structure of samples/apb3_completer_mem.
+
+Not included, fetched at build time:
+
+  antmicro/renode-verilator-integration
+  (https://github.com/antmicro/renode-verilator-integration),
+  commit c9692ca32c8c160e0c268bd0f5207359cee1626d, MIT licence.
+  scripts/fetch_upstream.sh downloads it into output/. Only
+  samples/apb3uart/Apb3UartCtrl.v (SpinalHDL output) is compiled.
+
+  Renode's DPI IntegrationLibrary and the Verilator runtime come from the
+  locked Renode and Verilator installations under their own licences.

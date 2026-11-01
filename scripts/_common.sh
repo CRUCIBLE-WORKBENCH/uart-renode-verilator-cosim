@@ -4,7 +4,7 @@ DEMO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
 OUTPUT_DIR="${DEMO_DIR}/output"
 UPSTREAM_DIR="${OUTPUT_DIR}/upstream"
 BUILD_DIR="${OUTPUT_DIR}/apb3uart"
-MODEL_PATH="${BUILD_DIR}/libVtop.so"
+MODEL_PATH="${BUILD_DIR}/verilated"
 
 # shellcheck source=../upstream.env
 . "${DEMO_DIR}/upstream.env"

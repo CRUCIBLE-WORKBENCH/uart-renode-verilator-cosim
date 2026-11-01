@@ -1,0 +1,11 @@
+// The Verilated UART on Renode's system bus. Renode starts the model itself
+// (SimulationFilePathLinux in uart_cosim.resc) and talks to it over two local
+// sockets. The UART's interrupt line comes back as signal 0 and drives `irq`.
+uart: CoSimulated.CoSimulatedPeripheral @ sysbus <0x40000000, +0x100>
+    address: "127.0.0.1"
+    timeout: 10000
+    maxWidth: 32
+    cosimToRenodeSignalRange: <0, +1>
+    0 -> irq@0
+
+irq: Miscellaneous.LED @ sysbus

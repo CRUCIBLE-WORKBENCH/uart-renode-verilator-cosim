@@ -1,39 +1,64 @@
 :name: APB3 UART co-simulation
-:description: Renode drives a Verilated SpinalHDL APB3 UART over its system bus.
+:description: Renode drives a Verilated SpinalHDL APB3 UART through the DPI IntegrationLibrary.
 
-# Override before including to try another model: $model = @/path/to/libVtop.so
-$model ?= @$ORIGIN/../output/apb3uart/libVtop.so
+# Override before including to try another model: $model = @/path/to/verilated
+$model ?= @$ORIGIN/../output/apb3uart/verilated
 
 mach create "apb3uart-cosim"
-machine LoadPlatformDescriptionFromString 'uart: CoSimulated.CoSimulatedUART @ sysbus <0x40000000, +0x100> { frequency: 50000000 }'
+machine LoadPlatformDescription $ORIGIN/uart_cosim.repl
 uart SimulationFilePathLinux $model
-machine Reset
 
-# STATUS (0x04): TX FIFO free [21:16], pending IRQs [9:8], IRQ enables [1:0].
+# The model's clock only advances while Renode's virtual time does. Each
+# RunFor gives it 1 ms; steps of 0.1 ms or less did not reach the model.
+
+# STATUS (0x04): RX FIFO occupancy [31:24], TX FIFO free [23:16],
+# pending IRQs [9:8] (RX, TX), IRQ enables [1:0] (RX, TX).
 echo "STATUS reset"
 sysbus ReadDoubleWord 0x40000004
+echo "IRQ reset"
+irq State
 sysbus WriteDoubleWord 0x40000004 3
+emulation RunFor "0.001"
 echo "STATUS tx+rx irq enabled"
 sysbus ReadDoubleWord 0x40000004
+echo "IRQ tx empty"
+irq State
 sysbus WriteDoubleWord 0x40000004 2
+emulation RunFor "0.001"
 echo "STATUS rx irq enabled"
 sysbus ReadDoubleWord 0x40000004
+echo "IRQ nothing received"
+irq State
 sysbus WriteDoubleWord 0x40000004 0
 echo "STATUS irqs disabled"
 sysbus ReadDoubleWord 0x40000004
 
-# CLOCK_DIVIDER (0x08) and FRAME (0x0C, 8 data bits) match sim_main.cpp's agent.
+# CLOCK_DIVIDER (0x08) and FRAME (0x0C, 8 data bits, no parity, one stop bit).
 sysbus WriteDoubleWord 0x40000008 0
 sysbus WriteDoubleWord 0x4000000C 7
 
-# DATA (0x00): RX valid [16], RX byte [7:0]. Each byte crosses the RTL's rxd pin.
+# DATA (0x00): write = transmit; read = RX valid [16], RX byte [7:0].
+# TX is wired to RX in hdl/sim.sv, so each byte crosses the serial line.
 echo "DATA rx empty"
 sysbus ReadDoubleWord 0x40000000
-uart WriteChar 0x41
+sysbus WriteDoubleWord 0x40000000 0x41
+echo "DATA 'A' still on the wire"
+sysbus ReadDoubleWord 0x40000000
+emulation RunFor "0.001"
 echo "DATA rx 'A'"
 sysbus ReadDoubleWord 0x40000000
-uart WriteChar 0x5A
+
+sysbus WriteDoubleWord 0x40000004 2
+sysbus WriteDoubleWord 0x40000000 0x5A
+emulation RunFor "0.001"
+echo "STATUS 'Z' waiting"
+sysbus ReadDoubleWord 0x40000004
+echo "IRQ rx pending"
+irq State
 echo "DATA rx 'Z'"
 sysbus ReadDoubleWord 0x40000000
+emulation RunFor "0.001"
+echo "IRQ rx drained"
+irq State
 
 echo "UART_COSIM_DONE"

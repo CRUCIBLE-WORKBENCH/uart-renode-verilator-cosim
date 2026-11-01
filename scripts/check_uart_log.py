@@ -2,14 +2,14 @@
 """Judge a Renode log from scripts/uart_cosim.resc.
 
 Renode exits 0 even when the co-simulated model fails to load, so the exit
-status proves nothing. A run passes only if every labelled register read
-returned the value the RTL must produce, the script reached its end marker,
-and Renode logged no error.
+status proves nothing. A run passes only if every labelled register read and
+interrupt-line state is what the RTL must produce, the script reached its end
+marker, and Renode logged no error.
 
     check_uart_log.py LOG [--expect "LABEL=0xVALUE" ...]
 
---expect overrides one expected value; smoke.sh uses it to prove that a wrong
-expectation is rejected.
+--expect overrides one expected value (a number, or True/False for an IRQ
+state); smoke.sh uses it to prove that a wrong expectation is rejected.
 """
 import argparse
 import re
@@ -18,24 +18,35 @@ from pathlib import Path
 
 DONE_MARKER = "UART_COSIM_DONE"
 
+# Register reads are numbers; `irq State` (the RTL's interrupt pin, seen
+# through Renode GPIO input 0) is True or False.
 EXPECTED = [
     ("STATUS reset", 0x00200000),
+    ("IRQ reset", False),
     ("STATUS tx+rx irq enabled", 0x00200103),
+    ("IRQ tx empty", True),
     ("STATUS rx irq enabled", 0x00200002),
+    ("IRQ nothing received", False),
     ("STATUS irqs disabled", 0x00200000),
     ("DATA rx empty", 0x00000000),
+    ("DATA 'A' still on the wire", 0x00000000),
     ("DATA rx 'A'", 0x00010041),
+    ("STATUS 'Z' waiting", 0x01200202),
+    ("IRQ rx pending", True),
     ("DATA rx 'Z'", 0x0001005A),
+    ("IRQ rx drained", False),
 ]
 
-ERROR_PATTERNS = ("[ERROR]", "There was an error", "Operation timeout")
+# "%Error" is the Verilated model's own output (an assertion or $error),
+# which Renode copies into its log.
+ERROR_PATTERNS = ("[ERROR]", "There was an error", "Operation timeout", "%Error")
 
 LABELS = {label for label, _ in EXPECTED}
-HEX_LINE = re.compile(r"^0x([0-9A-Fa-f]{8})$")
+VALUE_LINE = re.compile(r"^(?:0x([0-9A-Fa-f]{8})|(True|False))$")
 
 
 def readbacks(log):
-    """Return (label, value) for each register read that follows an echo label."""
+    """Return (label, value) for each read that follows an echo label."""
     pairs = []
     label = None
     for raw in log.splitlines():
@@ -43,11 +54,16 @@ def readbacks(log):
         if line in LABELS:
             label = line
             continue
-        m = HEX_LINE.match(line)
+        m = VALUE_LINE.match(line)
         if m and label is not None:
-            pairs.append((label, int(m.group(1), 16)))
+            value = int(m.group(1), 16) if m.group(1) else m.group(2) == "True"
+            pairs.append((label, value))
             label = None
     return pairs
+
+
+def show(value):
+    return str(value) if isinstance(value, bool) else "0x%08X" % value
 
 
 def problems(log, expected=EXPECTED):
@@ -60,11 +76,11 @@ def problems(log, expected=EXPECTED):
     got = readbacks(log)
     for i, (label, want) in enumerate(expected):
         if i >= len(got):
-            found.append("missing read: %s (want 0x%08X)" % (label, want))
+            found.append("missing read: %s (want %s)" % (label, show(want)))
             continue
         got_label, value = got[i]
-        if got_label != label or value != want:
-            found.append("%s: got %s=0x%08X, want 0x%08X" % (label, got_label, value, want))
+        if got_label != label or type(value) is not type(want) or value != want:
+            found.append("%s: got %s=%s, want %s" % (label, got_label, show(value), show(want)))
     if len(got) > len(expected):
         found.append("unexpected extra reads: %d" % (len(got) - len(expected)))
     if not any(line.strip() == DONE_MARKER for line in log.splitlines()):
@@ -78,7 +94,10 @@ def with_overrides(overrides):
         label, sep, value = item.rpartition("=")
         if not sep or label not in LABELS:
             raise SystemExit("bad --expect %r; labels: %s" % (item, ", ".join(sorted(LABELS))))
-        expected = [(l, int(value, 0) if l == label else v) for l, v in expected]
+        parsed = value == "True" if value in ("True", "False") else int(value, 0)
+        if type(parsed) is not type(dict(EXPECTED)[label]):
+            raise SystemExit("bad --expect %r: %s takes %s" % (item, label, type(dict(EXPECTED)[label]).__name__))
+        expected = [(l, parsed if l == label else v) for l, v in expected]
     return expected
 
 
@@ -93,7 +112,7 @@ def main(argv=None):
         for p in found:
             print("  " + p)
         return 1
-    print("PASS %s: %d register reads match the RTL" % (args.log, len(EXPECTED)))
+    print("PASS %s: %d reads match the RTL" % (args.log, len(EXPECTED)))
     return 0
 
 
